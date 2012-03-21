@@ -1,0 +1,1 @@
+This is my final project for my ELE 206 class at the University of Rhode Island.  It uses an arduino in order to sense the garage door state and control it over ethernet.  I am releasing this under the GPL version 3 licensing.

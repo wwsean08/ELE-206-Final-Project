@@ -17,7 +17,7 @@ const int THRESHOLD = 250;
 boolean isOpen = false;
 boolean wasOpen = false;
 const byte OPENPIN = 9;
-const byte DOORPIN = 5;
+const byte DOORPIN = 8;
 unsigned long timeOpen = 0;
 unsigned const long AUTOCLOSE = 7200000; //2 hours in miliseconds  
 
@@ -90,7 +90,8 @@ void readDoorSensor(){
 }
 
 /*This should get called if the button is pressed in order to close 
- *the garrage door using an interrupt.
+ *the garrage door using an interrupt or if the user hits the button
+ *on the website to close the garage door
  */
 void changeDoorState(){
   digitalWrite(DOORPIN, HIGH);
@@ -153,6 +154,23 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
  */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
+  P(header) = "<html> \n<head>";
+  P(title) = "<title>Running Garage Door Opener</title>";
+  P(endHeader) = "</head> \n<body>";
+  P(body1) = "<h1>Now activating the garage door opener, you will be redirected back to the home page in about 5 seconds</h1><br />\n";
+  P(returnButton) = "<input type=\"submit\" value=\"Return\" name=\"button\" /> \n";
+  P(form) = "<form action=\"index.html\" method=\"post\"> \n";
+  P(endBody) = "</body> \n</html>";
+  P(redirrect) = "<meta http-equiv=\"refresh\" content=\"5; /index.html\">";
+  server.printP(header);
+  server.printP(title);
+  server.printP(redirrect);
+  server.printP(endHeader);
+  server.printP(body1);
+  server.printP(form);
+  server.printP(returnButton);
+  server.print("</form>\n");
+  server.printP(endBody);
   changeDoorState();
 }
 

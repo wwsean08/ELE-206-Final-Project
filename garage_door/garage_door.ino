@@ -1,7 +1,12 @@
 //these imports allow us to use the ethernet shield
+//the imports below are used for the ethernet shield
 #include "SPI.h"
 #include "Ethernet.h"
 #include "WebServer.h"
+//the imports below are used for the temperature and time sensor
+#include "Wire.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 /*
 *Below are the global variables and constants

@@ -87,6 +87,13 @@ void changeDoorState(){
   delay(250);
   digitalWrite(DOORPIN, LOW);
 }
+
+/**
+* get's the current temperature of the garage, currently stubbed
+*/
+int getTemp(){
+  return 0;
+}
 /**
 *  this will be called whenever someone goes to our main site, 
 *  and will display the current info about the garrage.  It will 
@@ -95,10 +102,12 @@ void changeDoorState(){
 void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess(); //send the 200 saying we're good
   P(header) = "<html> \n<head>";
-    P(title) = "<title>Garage Info</title>";
+  P(title) = "<title>Garage Info</title>";
   P(endHeader) = "</head> \n<body>";
   P(endBody) = "</body> \n</html>";
   P(DoorStatus) = "<h1>Door Status: ";
+  P(buttonClose) = "<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n";
+  P(buttonOpen) = "<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n";
   P(form) = "<form action=\"control.html\" method=\"post\"> \n";
   server.printP(header);
   server.printP(title);
@@ -106,15 +115,20 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   server.printP(DoorStatus);
   if(isOpen){
     server.print("Open </h1><br /> \n");
-    //form to open/close the door
-    server.printP(form);
-    server.print("<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n");
-    server.print("</form>");
   }else{
     server.print("Closed </h1><br /> \n");
+  }
+  server.print("<h1>Current Temprature: ");
+  server.print(getTemp());
+  server.print("˚</h1><br /> \n");
+  if(isOpen){
     server.printP(form);
-    server.print("<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n");
-    server.print("</form>");
+    server.printP(buttonClose);
+    server.print("</form>\n");
+  }else{
+    server.printP(form);
+    server.printP(buttonOpen);
+    server.print("</form>\n");
   }
   server.printP(endBody);
 }

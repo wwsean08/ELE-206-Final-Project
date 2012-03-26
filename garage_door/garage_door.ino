@@ -5,7 +5,7 @@
 
 /*
 *Below are the global variables and constants
-*/
+ */
 static uint8_t mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C };
 static uint8_t ip[] = { 192, 168, 1, 20 };
 #define PREFIX ""
@@ -19,8 +19,17 @@ boolean wasOpen = false;
 const byte OPENPIN = 9;
 const byte DOORPIN = 5;
 unsigned long timeOpen = 0;
-unsigned const long AUTOCLOSE = 0;
+unsigned const long AUTOCLOSE = 7200000; //2 hours in miliseconds  
 
+/**
+ *  This method reads wether or not the garage door is open and
+ *  saves that information to the isOpen/wasOpen variables as
+ *  updates the LED in the house, and will autoclose the door
+ *  if it's been open too long
+ *
+ *  Much of the code in this method is used from the sample code
+ *  for the ping ultrasonic sensor
+ */
 void readDoorSensor(){
   timecount = 0;
   val = 0;
@@ -65,7 +74,8 @@ void readDoorSensor(){
     if(wasOpen == false){
       timeOpen = millis();
       wasOpen = true;
-    }else{
+    }
+    else{
       if(timeOpen+AUTOCLOSE < millis()){
         changeDoorState();
       }
@@ -81,7 +91,7 @@ void readDoorSensor(){
 
 /*This should get called if the button is pressed in order to close 
  *the garrage door using an interrupt.
-*/
+ */
 void changeDoorState(){
   digitalWrite(DOORPIN, HIGH);
   delay(250);
@@ -89,16 +99,17 @@ void changeDoorState(){
 }
 
 /**
-* get's the current temperature of the garage, currently stubbed
-*/
+ * get's the current temperature of the garage, currently stubbed
+ */
 int getTemp(){
   return 0;
 }
+
 /**
-*  this will be called whenever someone goes to our main site, 
-*  and will display the current info about the garrage.  It will 
-*  also allow you to close or open the garage door remotely
-*/
+ *  this will be called whenever someone goes to our main site, 
+ *  and will display the current info about the garrage.  It will 
+ *  also allow you to close or open the garage door remotely
+ */
 void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess(); //send the 200 saying we're good
   P(header) = "<html> \n<head>";
@@ -115,7 +126,8 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   server.printP(DoorStatus);
   if(isOpen){
     server.print("Open </h1><br /> \n");
-  }else{
+  }
+  else{
     server.print("Closed </h1><br /> \n");
   }
   server.print("<h1>Current Temprature: ");
@@ -125,7 +137,8 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
     server.printP(form);
     server.printP(buttonClose);
     server.print("</form>\n");
-  }else{
+  }
+  else{
     server.printP(form);
     server.printP(buttonOpen);
     server.print("</form>\n");
@@ -134,15 +147,18 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
 }
 
 /**
-*  This will take care of opening or closing the garage door if the button
-*  on the main page is clicked.  In a good scinario this would require a password
-*  however in ours it won't for simplicity reasons and because it will be local only
-*/
+ *  This will take care of opening or closing the garage door if the button
+ *  on the main page is clicked.  In a good scinario this would require a password
+ *  however in ours it won't for simplicity reasons and because it will be local only
+ */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
   changeDoorState();
 }
 
+/**
+ *  The initial setup of the program, it is only called once to initialize everything
+ */
 void setup() {
   pinMode(OPENPIN, OUTPUT);  //the pin with the LED for notification
   attachInterrupt(0, changeDoorState, RISING);  //located on digital pin 2
@@ -156,6 +172,9 @@ void setup() {
   webserver.begin();
 }
 
+/**
+ *  The main loop of the program which is constantly executing
+ */
 void loop() {
   char buff[64];
   int len = 64;

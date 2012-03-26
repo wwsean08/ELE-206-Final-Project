@@ -87,28 +87,58 @@ void changeDoorState(){
   delay(250);
   digitalWrite(DOORPIN, LOW);
 }
-
+/**
+*  this will be called whenever someone goes to our main site, 
+*  and will display the current info about the garrage.  It will 
+*  also allow you to close or open the garage door remotely
+*/
 void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess(); //send the 200 saying we're good
-  if(type !=WebServer::HEAD){
-    P(DoorStatus) = "<h1>Door Status: ";
-    server.printP(DoorStatus);
-    if(isOpen){
-      server.print("Open </h1><br />");
-    }else{
-      server.print("Closed </h1><br />");
-    }
+  P(header) = "<html> \n<head>";
+    P(title) = "<title>Garage Info</title>";
+  P(endHeader) = "</head> \n<body>";
+  P(endBody) = "</body> \n</html>";
+  P(DoorStatus) = "<h1>Door Status: ";
+  P(form) = "<form action=\"control.html\" method=\"post\"> \n";
+  server.printP(header);
+  server.printP(title);
+  server.printP(endHeader);
+  server.printP(DoorStatus);
+  if(isOpen){
+    server.print("Open </h1><br /> \n");
+    //form to open/close the door
+    server.printP(form);
+    server.print("<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n");
+    server.print("</form>");
+  }else{
+    server.print("Closed </h1><br /> \n");
+    server.printP(form);
+    server.print("<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n");
+    server.print("</form>");
   }
+  server.printP(endBody);
+}
+
+/**
+*  This will take care of opening or closing the garage door if the button
+*  on the main page is clicked.  In a good scinario this would require a password
+*  however in ours it won't for simplicity reasons and because it will be local only
+*/
+void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  server.httpSuccess();
+  changeDoorState();
 }
 
 void setup() {
   pinMode(OPENPIN, OUTPUT);  //the pin with the LED for notification
   attachInterrupt(0, changeDoorState, RISING);  //located on digital pin 2
   pinMode(DOORPIN, OUTPUT);
+  pinMode(8, OUTPUT);
   digitalWrite(DOORPIN, LOW);
   Ethernet.begin(mac, ip);
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.html", &statusCommand);
+  webserver.addCommand("control.html", &controlCommand);
   webserver.begin();
 }
 

@@ -8,21 +8,26 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+#define ONE_WIRE_BUS 8
+#define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
+#define PREFIX "" //tells the web server to start at the root
+
 /*
 *Below are the global variables and constants
  */
-static uint8_t mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C };
-static uint8_t ip[] = { 192, 168, 1, 20 };
-#define PREFIX ""
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);  //the teperature sensor
+static uint8_t mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C }; //the mac address of the arduino
+static uint8_t ip[] = { 192, 168, 1, 20 }; //the ip address of the arduino
 WebServer webserver(PREFIX, 80);
 const byte ULTRASOUNDSIGNAL = 7; // Ultrasound signal pin
 int val = 0;
 int timecount = 0; // Echo counter
-const int THRESHOLD = 250;
+const int THRESHOLD = 250;  //the threshold to determine if the door is open or closed
 boolean isOpen = false;
 boolean wasOpen = false;
-const byte OPENPIN = 9;
-const byte DOORPIN = 8;
+const byte OPENPIN = 9;  //the pin which controls the LED in the house
+const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the door
 unsigned long timeOpen = 0;
 unsigned const long AUTOCLOSE = 7200000; //2 hours in miliseconds  
 
@@ -105,10 +110,11 @@ void changeDoorState(){
 }
 
 /**
- * get's the current temperature of the garage, currently stubbed
+ * get's the current temperature of the garage
  */
 int getTemp(){
-  return 0;
+  sensors.requestTemperatures();
+  return (int)sensors.getTempFByIndex(0);
 }
 
 /**
@@ -126,8 +132,10 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   P(buttonClose) = "<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n";
   P(buttonOpen) = "<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n";
   P(form) = "<form action=\"control.html\" method=\"post\"> \n";
+  P(redirrect) = "<meta http-equiv=\"refresh\" content=\"300; /index.html\">";
   server.printP(header);
   server.printP(title);
+  server.printP(redirrect);
   server.printP(endHeader);
   server.printP(DoorStatus);
   if(isOpen){
@@ -188,6 +196,7 @@ void setup() {
   pinMode(DOORPIN, OUTPUT);
   pinMode(8, OUTPUT);
   digitalWrite(DOORPIN, LOW);
+  sensors.begin();
   Ethernet.begin(mac, ip);
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.html", &statusCommand);

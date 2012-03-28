@@ -3,6 +3,7 @@
 #include "SPI.h"
 #include "Ethernet.h"
 #include "WebServer.h"
+#include <SD.h>  //to deal with the sd card
 //the imports below are used for the temperature and time sensor
 #include "Wire.h"
 #include <OneWire.h>
@@ -167,24 +168,31 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
  */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
-  P(header) = "<html> \n<head>";
-  P(title) = "<title>Running Garage Door Opener</title>";
-  P(endHeader) = "</head> \n<body>";
-  P(body1) = "<h1>Now activating the garage door opener, you will be redirected back to the home page in about 5 seconds</h1><br />\n";
-  P(returnButton) = "<input type=\"submit\" value=\"Return\" name=\"button\" /> \n";
-  P(form) = "<form action=\"index.html\" method=\"post\"> \n";
-  P(endBody) = "</body> \n</html>";
-  P(redirrect) = "<meta http-equiv=\"refresh\" content=\"5; /index.html\">";
-  server.printP(header);
-  server.printP(title);
-  server.printP(redirrect);
-  server.printP(endHeader);
-  server.printP(body1);
-  server.printP(form);
-  server.printP(returnButton);
-  server.print("</form>\n");
-  server.printP(endBody);
   changeDoorState();
+  File control = SD.open("control.html", FILE_READ);
+  while(control.available()){
+    server.print(control.read());
+  }
+  control.close();
+}
+
+/**
+* will load up the configuration website from the sd card and display it to the user
+*/
+void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  server.httpSuccess();
+  File config = SD.open("config.html", FILE_READ);
+  while(config.available()){
+    server.print(config.read());
+  }
+  config.close();
+}
+
+/**
+* this will take care of any changes to the configuration file, updating the memory, and writing them to a file
+*/
+void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  
 }
 
 /**
@@ -198,9 +206,12 @@ void setup() {
   digitalWrite(DOORPIN, LOW);
   sensors.begin();
   Ethernet.begin(mac, ip);
+  SD.begin(4);
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.html", &statusCommand);
   webserver.addCommand("control.html", &controlCommand);
+  webserver.addCommand("config.html", &configCommand);
+  webserver.addCommand("changeConfig.html", &changeConfigCommand);
   webserver.begin();
 }
 

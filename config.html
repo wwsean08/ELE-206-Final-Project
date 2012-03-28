@@ -1,0 +1,30 @@
+<html>
+	<head>
+		<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+		<title>Garage Door Configuration</title>
+	</head>
+	<body>
+		<a href="/index.html">home</a><br />
+		<h1>Configuration Options:</h1><br />
+		<form action="changeConfig.html" method="post">
+			Auto Close Delay: 
+			<select name="delay">
+				<option value="0">Do Not Autoclose</option>
+				<option value="1">15 Minutes</option>
+				<option value="2">30 Minutes</option>
+				<option value="3">45 Minutes</option>
+				<option value="4">1 Hour</option>
+				<option value="5">2 Hours</option>
+			</select><br />
+			Temperature autoclose (farenheit):
+			<input type="text" name="temp" /><br />
+			<b>Change Password:</b><br />
+				New Password: <input type="password" name="newPW" /><br />
+				Confirm New Password: <input type="password" name="newPWConfirm" /><br />
+			
+			Enter current password to save settings
+			<input type="password" name="currentPW" /><br />
+			<input type="submit" value="Sumbit" name="submit"/>
+		</form>
+	</body>
+</html>

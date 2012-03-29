@@ -1,33 +1,37 @@
 //these imports allow us to use the ethernet shield
 //the imports below are used for the ethernet shield
-#include "SPI.h"
-#include "Ethernet.h"
-#include "WebServer.h"
-#include <SD.h>  //to deal with the sd card
+#include <SPI.h>
+#include <Ethernet.h>
+#include <WebServer.h>
+//to deal with the sd card for file i/o
+#include <SD.h>  
 //the imports below are used for the temperature and time sensor
-#include "Wire.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <Wire.h>
 
-#define ONE_WIRE_BUS 8
 #define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
 #define PREFIX "" //tells the web server to start at the root
-
 /*
 *Below are the global variables and constants
  */
+
+const byte ONE_WIRE_BUS = 8;  //the pin for reading the temperature
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);  //the teperature sensor
-static uint8_t mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C }; //the mac address of the arduino
-static uint8_t ip[] = { 192, 168, 1, 20 }; //the ip address of the arduino
+static uint8_t mac[] = { 
+  0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C }; //the mac address of the arduino
+static uint8_t ip[] = { 
+  192, 168, 1, 20 }; //the ip address of the arduino
 WebServer webserver(PREFIX, 80);
 const byte ULTRASOUNDSIGNAL = 7; // Ultrasound signal pin
 int val = 0;
+int temp = 0;
 int timecount = 0; // Echo counter
 const int THRESHOLD = 250;  //the threshold to determine if the door is open or closed
 boolean isOpen = false;
 boolean wasOpen = false;
-const byte OPENPIN = 9;  //the pin which controls the LED in the house
+const byte HOMEPIN = 9;  //the pin which controls the LED in the house
 const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the door
 unsigned long timeOpen = 0;
 unsigned const long AUTOCLOSE = 7200000; //2 hours in miliseconds  
@@ -79,7 +83,7 @@ void readDoorSensor(){
       wasOpen = false;
     }
     isOpen = false;
-    digitalWrite(OPENPIN, LOW); //turn light off the LED if it's open
+    digitalWrite(HOMEPIN, LOW); //turn light off the LED if it's open
   }
   else{  //we are open
     if(wasOpen == false){
@@ -92,7 +96,7 @@ void readDoorSensor(){
       }
     }
     isOpen = true;
-    digitalWrite(OPENPIN, HIGH);  //light up the LED if it's open
+    digitalWrite(HOMEPIN, HIGH);  //light up the LED if it's open
   }
 
   /* Delay of program
@@ -115,7 +119,8 @@ void changeDoorState(){
  */
 int getTemp(){
   sensors.requestTemperatures();
-  return (int)sensors.getTempFByIndex(0);
+  temp = (int)sensors.getTempFByIndex(0);
+  return temp;
 }
 
 /**
@@ -148,16 +153,14 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   server.print("<h1>Current Temprature: ");
   server.print(getTemp());
   server.print("˚</h1><br /> \n");
+  server.printP(form);
   if(isOpen){
-    server.printP(form);
     server.printP(buttonClose);
-    server.print("</form>\n");
   }
   else{
-    server.printP(form);
     server.printP(buttonOpen);
-    server.print("</form>\n");
   }
+  server.print("</form>\n");
   server.printP(endBody);
 }
 
@@ -177,8 +180,8 @@ void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, b
 }
 
 /**
-* will load up the configuration website from the sd card and display it to the user
-*/
+ * will load up the configuration website from the sd card and display it to the user
+ */
 void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
   File config = SD.open("config.html", FILE_READ);
@@ -189,24 +192,30 @@ void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
 }
 
 /**
-* this will take care of any changes to the configuration file, updating the memory, and writing them to a file
-*/
+ * this will take care of any changes to the configuration file, updating the memory, and writing them to a file
+ */
 void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  
+  //1. check if the password submitted matches the current one, if it doesn't don't change the settings and return
+  SD.remove("config.txt");
+  File configFile = SD.open("config.txt", FILE_WRITE);
+  //2. go thru the arguments we should be receiving and write them to the file in a defined way, if there is a "missing"
+  //   argument, keep the current one from memory.
+  //3. update the memory for the variables like temp to close at, and when to close, and the password
 }
 
 /**
  *  The initial setup of the program, it is only called once to initialize everything
  */
 void setup() {
-  pinMode(OPENPIN, OUTPUT);  //the pin with the LED for notification
+  pinMode(HOMEPIN, OUTPUT);  //the pin with the LED for notification
   attachInterrupt(0, changeDoorState, RISING);  //located on digital pin 2
   pinMode(DOORPIN, OUTPUT);
   pinMode(8, OUTPUT);
   digitalWrite(DOORPIN, LOW);
   sensors.begin();
-  Ethernet.begin(mac, ip);
+  Ethernet.begin(mac, ip);  
   SD.begin(4);
+  Wire.begin();
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.html", &statusCommand);
   webserver.addCommand("control.html", &controlCommand);
@@ -225,3 +234,4 @@ void loop() {
   webserver.processConnection(buff, &len);
   delay(100);
 }
+

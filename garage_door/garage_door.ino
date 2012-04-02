@@ -8,7 +8,7 @@
 //the imports below are used for the temperature and time sensor
 #include <OneWire.h>
 #include <DallasTemperature.h>
-//#include <Wire.h>
+#include <Wire.h>
 
 #define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
 #define PREFIX "" //tells the web server to start at the root
@@ -28,13 +28,15 @@ const byte ULTRASOUNDSIGNAL = 7; // Ultrasound signal pin
 int val = 0;
 int temp = 0;
 int timecount = 0; // Echo counter
+int timeOpen = 0;
 const int THRESHOLD = 250;  //the threshold to determine if the door is open or closed
 boolean isOpen = false;
 boolean wasOpen = false;
 const byte HOMEPIN = 9;  //the pin which controls the LED in the house
-const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the door
-unsigned long timeOpen = 0;
-unsigned const long AUTOCLOSE = 7200000; //2 hours in miliseconds  
+const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the doorunsigned long timeOpen = 0;
+const byte LASERPIN = 3;  //the pin we will read the laser on
+unsigned long autoclose = 7200000; //2 hours in miliseconds  
+boolean AutoCloseEnabled = true;
 
 /**
  *  This method reads wether or not the garage door is open and
@@ -91,8 +93,10 @@ void readDoorSensor(){
       wasOpen = true;
     }
     else{
-      if(timeOpen+AUTOCLOSE < millis()){
-        changeDoorState();
+      if(AutoCloseEnabled){
+        if(timeOpen+autoclose < millis()){
+          changeDoorState();
+        }
       }
     }
     isOpen = true;
@@ -125,9 +129,37 @@ int getTemp(){
 
 /**
 * checks if the safety laser is blocked and returns true if it is, it currently is stubbed out.
+* this needs to be tested as i'm not sure if it's normally open or normally closed
 */
 boolean laserIsBlocked(){
-  return false;
+  if(digitalRead(LASERPIN) == HIGH){
+    return false;
+  }else{
+    return true;
+  }
+}
+
+/**
+* Updates the log file
+* Modes:
+*    0. Door closing
+*    1. Door opening
+*    2. Door closing automatically
+*/
+void updateLog(byte mode){
+  File logger = SD.open("log.txt", FILE_WRITE);
+  switch(mode){
+    case 0:
+      logger.println("<insert time here> Closing garage door from website");
+      break;
+    case 1:
+      logger.println("<insert time here> Opening garage door from website");
+      break;
+    case 2:
+      logger.println("<insert time here> Closing garage door automatically");
+      break;
+  }
+  logger.close();
 }
 
 /**
@@ -185,27 +217,21 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
  *  however in ours it won't for simplicity reasons and because it will be local only
  */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  server.httpSuccess();
   if(!laserIsBlocked()){
+    if(isOpen)
+      updateLog(0);
+    else
+      updateLog(1);
     changeDoorState();
     File control = SD.open("control.htm");
     if(control){
+      server.httpSuccess();
       while(control.available()){
         server.print((char)control.read());
       }
       control.close();
     }else{
-      server.print("404 Error: Page Not Found");
-    }
-  }else{
-    File fail = SD.open("fail.htm");
-    if(fail){
-      while(control.available()){
-        server.print((char)fail.read());
-      }
-      control.close();
-    }else{
-      server.print("404 Error: Page Not Found");
+      server.httpFail();
     }
   }
 }
@@ -214,15 +240,15 @@ void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, b
  * will load up the configuration website from the sd card and display it to the user
  */
 void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  server.httpSuccess();
   File config = SD.open("config.htm");
   if(config){
+    server.httpSuccess();
     while(config.available()){
       server.write((char)config.read());
     }
     config.close();
   }else{
-    server.print("404 Error: Page Not Found");
+    server.httpFail();
   }
 }
 
@@ -239,24 +265,53 @@ void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char
 }
 
 /**
+* Takse care of someone wanting to look at the log
+*/ 
+void logCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  File logger = SD.open("log.txt");
+  if(logger){
+    server.httpSuccess();
+    while(logger.available()){
+      server.write((char)logger.read());
+    }
+    logger.close();
+  }else{
+    server.httpFail();
+  }
+}
+
+void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  File failPage = SD.open("404.htm");
+  if(failPage){
+    while(failPage.available()){
+      server.write((char)failPage.read());
+    }
+    failPage.close();
+  }
+}
+
+/**
  *  The initial setup of the program, it is only called once to initialize everything
  */
 void setup() {
   pinMode(HOMEPIN, OUTPUT);  //the pin with the LED for notification
+  pinMode(DOORPIN, OUTPUT);  
+  pinMode(8, OUTPUT);        //the pin to read the temperature sensor
+  pinMode(LASERPIN, INPUT);  //the pin to read the laser safety sensor
   attachInterrupt(0, changeDoorState, RISING);  //located on digital pin 2
-  pinMode(DOORPIN, OUTPUT);
-  pinMode(8, OUTPUT);
   digitalWrite(DOORPIN, LOW);
   sensors.begin();
   Ethernet.begin(mac, ip);  
   SD.begin(4);
-//  Wire.begin();
+  Wire.begin();
   webserver.setDefaultCommand(&statusCommand);
-  webserver.addCommand("index.html", &statusCommand);
-  webserver.addCommand("control.html", &controlCommand);
-  webserver.addCommand("config.html", &configCommand);
-  webserver.addCommand("changeConfig.html", &changeConfigCommand);
-  webserver.begin();
+  webserver.addCommand("index.htm", &statusCommand);  //the home page which gives you the status, same as above
+  webserver.addCommand("control.htm", &controlCommand);  //this raises or lowers the garage door
+  webserver.addCommand("config.htm", &configCommand);  //this is the one that will display the form to change the config
+  webserver.addCommand("changeConfig.htm", &changeConfigCommand);  //this is used to actually change the settings
+  webserver.addCommand("log.txt", &logCommand);  //this command will read the log file to the person requesting it
+  webserver.setFailureCommand(&failCommand);  //if it's none of the above http requests
+  webserver.begin();  //start up the webserver, time for some fun
 }
 
 /**
@@ -265,8 +320,8 @@ void setup() {
 void loop() {
   char buff[64];
   int len = 64;
-  readDoorSensor();
-  webserver.processConnection(buff, &len);
-  delay(100);
+  readDoorSensor();  //read the sensor and possibly does some of the automatic stuff
+  webserver.processConnection(buff, &len);  //check to see if someone wants to connect to the site
+  delay(100);  //delay and go again
 }
 

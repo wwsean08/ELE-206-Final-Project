@@ -8,7 +8,7 @@
 //the imports below are used for the temperature and time sensor
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <Wire.h>
+//#include <Wire.h>
 
 #define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
 #define PREFIX "" //tells the web server to start at the root
@@ -172,11 +172,15 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
   changeDoorState();
-  File control = SD.open("control.html", FILE_READ);
-  while(control.available()){
-    server.print(control.read());
+  File control = SD.open("control.htm");
+  if(control){
+    while(control.available()){
+      server.print((char)control.read());
+    }
+    control.close();
+  }else{
+    server.print("404 Error: Page Not Found");
   }
-  control.close();
 }
 
 /**
@@ -184,11 +188,15 @@ void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, b
  */
 void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
-  File config = SD.open("config.html", FILE_READ);
-  while(config.available()){
-    server.print(config.read());
+  File config = SD.open("config.htm");
+  if(config){
+    while(config.available()){
+      server.write((char)config.read());
+    }
+    config.close();
+  }else{
+    server.print("404 Error: Page Not Found");
   }
-  config.close();
 }
 
 /**
@@ -215,7 +223,7 @@ void setup() {
   sensors.begin();
   Ethernet.begin(mac, ip);  
   SD.begin(4);
-  Wire.begin();
+//  Wire.begin();
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.html", &statusCommand);
   webserver.addCommand("control.html", &controlCommand);

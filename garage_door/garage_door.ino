@@ -145,6 +145,8 @@ boolean laserIsBlocked(){
 *    0. Door closing
 *    1. Door opening
 *    2. Door closing automatically
+*    3. The door goes from open to closed from either the pin pad or the remote control
+*    4. The door goes from closed to open from either the pin pad or the remote control
 */
 void updateLog(byte mode){
   File logger = SD.open("log.txt", FILE_WRITE);
@@ -157,6 +159,12 @@ void updateLog(byte mode){
       break;
     case 2:
       logger.println("<insert time here> Closing garage door automatically");
+      break;
+    case 3:
+      logger.println("<insert time here> Garage closed door by remote control or pinpad");
+      break;
+    case 4:
+      logger.println("<insert time here> Garage door opened by remote control or pinpad");
       break;
   }
   logger.close();
@@ -280,6 +288,9 @@ void logCommand(WebServer &server, WebServer::ConnectionType type, char *, bool)
   }
 }
 
+/**
+* the fail command in case of a 404 or other erros
+*/
 void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   File failPage = SD.open("404.htm");
   if(failPage){

@@ -124,6 +124,13 @@ int getTemp(){
 }
 
 /**
+* checks if the safety laser is blocked and returns true if it is, it currently is stubbed out.
+*/
+boolean laserIsBlocked(){
+  return false;
+}
+
+/**
  *  this will be called whenever someone goes to our main site, 
  *  and will display the current info about the garrage.  It will 
  *  also allow you to close or open the garage door remotely
@@ -136,7 +143,9 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   P(endBody) = "</body> \n</html>";
   P(DoorStatus) = "<h1>Door Status: ";
   P(buttonClose) = "<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n";
+  P(buttonCloseDisabled) = "<input type=\"submit\" disabled=\"disabled\" value=\"Close Door\" name=\"button\" /> \n";
   P(buttonOpen) = "<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n";
+  P(buttonOpenDisabled) = "<input type=\"submit\" disabled=\"disabled\" value=\"Open Door\" name=\"button\" /> \n";
   P(form) = "<form action=\"control.html\" method=\"post\"> \n";
   P(redirrect) = "<meta http-equiv=\"refresh\" content=\"300; /index.html\">";
   server.printP(header);
@@ -155,10 +164,16 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   server.print("˚</h1><br /> \n");
   server.printP(form);
   if(isOpen){
-    server.printP(buttonClose);
+    if(!laserIsBlocked())
+      server.printP(buttonClose);
+    else
+      server.printP(buttonCloseDisabled);
   }
   else{
-    server.printP(buttonOpen);
+    if(!laserIsBlocked())
+      server.printP(buttonOpen);
+    else
+      server.printP(buttonOpenDisabled);
   }
   server.print("</form>\n");
   server.printP(endBody);
@@ -171,15 +186,27 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
  */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   server.httpSuccess();
-  changeDoorState();
-  File control = SD.open("control.htm");
-  if(control){
-    while(control.available()){
-      server.print((char)control.read());
+  if(!laserIsBlocked()){
+    changeDoorState();
+    File control = SD.open("control.htm");
+    if(control){
+      while(control.available()){
+        server.print((char)control.read());
+      }
+      control.close();
+    }else{
+      server.print("404 Error: Page Not Found");
     }
-    control.close();
   }else{
-    server.print("404 Error: Page Not Found");
+    File fail = SD.open("fail.htm");
+    if(fail){
+      while(control.available()){
+        server.print((char)fail.read());
+      }
+      control.close();
+    }else{
+      server.print("404 Error: Page Not Found");
+    }
   }
 }
 

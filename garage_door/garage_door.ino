@@ -1,24 +1,19 @@
+#define WEBDUINO_FAVICON_DATA ""  //to allow a custom favicon
+#define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
+#define PREFIX "" //tells the web server to start at the root
+
 //these imports allow us to use the ethernet shield
 //the imports below are used for the ethernet shield
 #include <SPI.h>
 #include <Ethernet.h>
 #include <WebServer.h>
 //to deal with the sd card for file i/o
-#include <SD.h>  
-//the imports below are used for the temperature and time sensor
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include <Wire.h>
+#include <SD.h>
 
-#define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
-#define PREFIX "" //tells the web server to start at the root
 /*
 *Below are the global variables and constants
  */
 
-const byte ONE_WIRE_BUS = 8;  //the pin for reading the temperature
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);  //the teperature sensor
 static uint8_t mac[] = { 
   0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C }; //the mac address of the arduino
 static uint8_t ip[] = { 
@@ -28,16 +23,20 @@ const byte ULTRASOUNDSIGNAL = 7; // Ultrasound signal pin
 int val = 0;
 int temp = 0;
 int timecount = 0; // Echo counter
-int timeOpen = 0;
 const int THRESHOLD = 250;  //the threshold to determine if the door is open or closed
+const int LASERTHRESHOLD = 1000;  //the threshold to determine if the laser is blocked because it doesn't
+//use on and off, it uses 5.8v when clear, 6.4v when it's blocked.
 boolean isOpen = false;
 boolean wasOpen = false;
 const byte HOMEPIN = 9;  //the pin which controls the LED in the house
-const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the doorunsigned long timeOpen = 0;
-const byte LASERPIN = 3;  //the pin we will read the laser on
-unsigned long autoclose = 7200000; //2 hours in miliseconds  
+const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the door
+unsigned long timeOpen = 0;  //the time that the door was opened according to the millis command
+const byte LASERPIN = A10;  //the pin we will read the laser on
+unsigned long autoCloseTime = 7200000; //2 hours in miliseconds  
+int lowCloseTemp = -10;
+int highCloseTemp = 100;
 boolean AutoCloseEnabled = true;
-
+int tempSensorPin = A0;
 /**
  *  This method reads wether or not the garage door is open and
  *  saves that information to the isOpen/wasOpen variables as
@@ -94,7 +93,7 @@ void readDoorSensor(){
     }
     else{
       if(AutoCloseEnabled){
-        if(timeOpen+autoclose < millis()){
+        if(timeOpen+autoCloseTime < millis()){
           changeDoorState();
         }
       }
@@ -102,10 +101,6 @@ void readDoorSensor(){
     isOpen = true;
     digitalWrite(HOMEPIN, HIGH);  //light up the LED if it's open
   }
-
-  /* Delay of program
-   * -------------------------------------------------------------------
-   */
 }
 
 /*This should get called if the button is pressed in order to close 
@@ -113,53 +108,34 @@ void readDoorSensor(){
  *on the website to close the garage door
  */
 void changeDoorState(){
-  digitalWrite(DOORPIN, HIGH);
-  delay(250);
-  digitalWrite(DOORPIN, LOW);
+  digitalWrite(DOORPIN, HIGH);  //switch on
+  delay(250);                   //wait
+  digitalWrite(DOORPIN, LOW);   //switch off
 }
 
 /**
  * get's the current temperature of the garage
  */
-int getTemp(){
-  sensors.requestTemperatures();
-  temp = (int)sensors.getTempFByIndex(0);
-  return temp;
+float getTemp(){
+  int reading = analogRead(tempSensorPin);
+  float volt = reading*5.0;
+  volt /= 1024;
+  float tempC = (volt - .5)*100;
+  return ((tempC*9.0/5.0)+32); //convert to ferinheit
 }
 
 /**
-* checks if the safety laser is blocked and returns true if it is, it currently is stubbed out.
-* this needs to be tested as i'm not sure if it's normally open or normally closed
-*/
+ * checks if the safety laser is blocked and returns true if it is, it currently is stubbed out.
+ * this needs to be tested as i'm not sure if it's normally open or normally closed
+ */
 boolean laserIsBlocked(){
-  if(digitalRead(LASERPIN) == HIGH){
-    return false;
-  }else{
+  int level = analogRead(LASERPIN);
+  if(level >= LASERTHRESHOLD){
     return true;
   }
-}
-
-/**
-* Updates the log file
-* Modes:
-*    0. Door closing
-*    1. Door opening
-*    2. Door closing automatically
-*/
-void updateLog(byte mode){
-  File logger = SD.open("log.txt", FILE_WRITE);
-  switch(mode){
-    case 0:
-      logger.println("<insert time here> Closing garage door from website");
-      break;
-    case 1:
-      logger.println("<insert time here> Opening garage door from website");
-      break;
-    case 2:
-      logger.println("<insert time here> Closing garage door automatically");
-      break;
+  else{
+    return false;
   }
-  logger.close();
 }
 
 /**
@@ -218,10 +194,6 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
  */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   if(!laserIsBlocked()){
-    if(isOpen)
-      updateLog(0);
-    else
-      updateLog(1);
     changeDoorState();
     File control = SD.open("control.htm");
     if(control){
@@ -230,7 +202,8 @@ void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, b
         server.print((char)control.read());
       }
       control.close();
-    }else{
+    }
+    else{
       server.httpFail();
     }
   }
@@ -247,42 +220,73 @@ void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
       server.write((char)config.read());
     }
     config.close();
-  }else{
+  }
+  else{
     server.httpFail();
   }
 }
+
+#define NAMELEN 32
+#define VALUELEN 32
 
 /**
  * this will take care of any changes to the configuration file, updating the memory, and writing them to a file
  */
-void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  //1. check if the password submitted matches the current one, if it doesn't don't change the settings and return
-  SD.remove("config.txt");
-  File configFile = SD.open("config.txt", FILE_WRITE);
-  //2. go thru the arguments we should be receiving and write them to the file in a defined way, if there is a "missing"
-  //   argument, keep the current one from memory.
-  //3. update the memory for the variables like temp to close at, and when to close, and the password
-}
-
-/**
-* Takse care of someone wanting to look at the log
-*/ 
-void logCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  File logger = SD.open("log.txt");
-  if(logger){
-    server.httpSuccess();
-    while(logger.available()){
-      server.write((char)logger.read());
-    }
-    logger.close();
-  }else{
-    server.httpFail();
+void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete){
+  URLPARAM_RESULT rc;
+  char name[NAMELEN];
+  int  name_len;
+  char value[VALUELEN];
+  int value_len;
+  boolean foundEnable = false;
+  if(type == WebServer::GET){
+      server.httpSuccess();
+      if(strlen(url_tail)){
+        while(strlen(url_tail)){
+          rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
+          if (rc == URLPARAM_EOS){
+            break;
+          }else{
+            if(name == "enableAutoClose"){
+              AutoCloseEnabled = true;
+              foundEnable = true;
+            }else if(name == "delay"){
+              if(value == "0"){
+                AutoCloseEnabled = false;
+              }else if(value == "1"){
+                autoCloseTime = 900000;
+              }else if(value == "2"){
+                autoCloseTime = 1800000;
+              }else if(value == "3"){
+                  autoCloseTime = 2700000;
+              }else if(value == "4"){
+                  autoCloseTime = 3600000;
+              }else if(value == "5"){
+                  autoCloseTime = 7200000;
+              }
+            }else if(name == "tempLow"){
+              lowCloseTemp = (int)value;
+            }else if(name == "tempHigh"){
+              highCloseTemp = (int)value;
+            }
+          }
+        }
+      }if(!foundEnable){
+        AutoCloseEnabled = false;
+      }
+      SD.remove("config.txt");
+      File configFile = SD.open("config.txt", FILE_WRITE);
+      configFile.println("autoCloseEnabled=" + AutoCloseEnabled);
+      configFile.println("autoCloseTime=" + autoCloseTime);
+      configFile.println("autoCloseHigh=" + highCloseTemp);
+      configFile.println("autoCloseLow=" + lowCloseTemp);
+      configFile.close();
   }
 }
 
 /**
-* the fail command in case of a 404 or other erros
-*/
+ * the fail command in case of a 404 or other erros
+ */
 void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   File failPage = SD.open("404.htm");
   if(failPage){
@@ -293,26 +297,91 @@ void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool
   }
 }
 
+void faviconCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  File favicon = SD.open("favicon.ico");
+  if(favicon){
+    while(favicon.available()){
+      server.write(favicon.read());
+    }
+    favicon.close();
+  }
+}
+
+/**
+* this reads the contents of the config file and sets the variables accordingly
+* Line 1: autoclose enabled
+* Line 2: autoclose delay
+* Line 3: autoclose on low temp
+* Line 4: autoclose on high temp
+*/
+void readConfig(){
+  File config = SD.open("config.txt");
+  String value;
+  byte line = 1;
+  boolean passedEquals = false;
+  if(config){
+    byte nextChar = config.read();
+    while(nextChar != -1){
+      if(passedEquals){
+        if(nextChar != 10){
+          value = value + (char)nextChar;
+        }else{
+          if(line == 1){
+            if(value.charAt(0) == 't'){
+              AutoCloseEnabled = true;
+            }else{
+              AutoCloseEnabled = false;
+            }
+            line++;
+          }else if(line == 2){
+            char buf[value.length()];
+            value.toCharArray(buf, value.length());
+            autoCloseTime = (long)buf;
+            line++;
+          }else if(line == 3){
+            char buf[value.length()];
+            value.toCharArray(buf, value.length());
+            highCloseTemp = (int)buf;
+            line++;
+          }else if(line == 4){
+            char buf[value.length()];
+            value.toCharArray(buf, value.length());
+            highCloseTemp = (int)buf;
+            config.close();
+            return;
+          }
+          passedEquals = false;
+        }
+      }
+      else if(nextChar == 61){  //ascii = sign
+        passedEquals = true;
+        value = "";
+      }
+      nextChar = config.read();
+    }
+    config.close();
+  }
+}
+
 /**
  *  The initial setup of the program, it is only called once to initialize everything
  */
 void setup() {
   pinMode(HOMEPIN, OUTPUT);  //the pin with the LED for notification
   pinMode(DOORPIN, OUTPUT);  
-  pinMode(8, OUTPUT);        //the pin to read the temperature sensor
   pinMode(LASERPIN, INPUT);  //the pin to read the laser safety sensor
+  pinMode(tempSensorPin, INPUT);
   attachInterrupt(0, changeDoorState, RISING);  //located on digital pin 2
   digitalWrite(DOORPIN, LOW);
-  sensors.begin();
-  Ethernet.begin(mac, ip);  
+  Ethernet.begin(mac, ip);
   SD.begin(4);
-  Wire.begin();
+  readConfig();
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.htm", &statusCommand);  //the home page which gives you the status, same as above
   webserver.addCommand("control.htm", &controlCommand);  //this raises or lowers the garage door
   webserver.addCommand("config.htm", &configCommand);  //this is the one that will display the form to change the config
   webserver.addCommand("changeConfig.htm", &changeConfigCommand);  //this is used to actually change the settings
-  webserver.addCommand("log.txt", &logCommand);  //this command will read the log file to the person requesting it
+  webserver.addCommand("favicon.ico", &faviconCommand);
   webserver.setFailureCommand(&failCommand);  //if it's none of the above http requests
   webserver.begin();  //start up the webserver, time for some fun
 }
@@ -327,4 +396,3 @@ void loop() {
   webserver.processConnection(buff, &len);  //check to see if someone wants to connect to the site
   delay(100);  //delay and go again
 }
-

@@ -6,7 +6,9 @@
 	<body>
 		<a href="/index.html">home</a><br />
 		<h1>Configuration Options:</h1><br />
+		<p>Note that this does not necessarilly reflect your current settings</p><br />
 		<form action="changeConfig.htm" method="get">
+			<input type="checkbox" name="enableAutoClose" value="enable">Auto Close (check enabled, uncheck disabled)</input><br />
 			Auto Close Delay: 
 			<select name="delay">
 				<option value="0">Do Not Autoclose</option>
@@ -16,14 +18,10 @@
 				<option value="4">1 Hour</option>
 				<option value="5">2 Hours</option>
 			</select><br />
-			Temperature autoclose (farenheit):
-			<input type="text" name="temp" /><br />
-			<b>Change Password:</b><br />
-				New Password: <input type="password" name="newPW" /><br />
-				Confirm New Password: <input type="password" name="newPWConfirm" /><br />
-			
-			Enter current password to save settings
-			<input type="password" name="currentPW" /><br />
+			AutoClose when temperature is below (farenheit):
+			<input type="text" name="tempLow" /><br />
+			AutoClose when temperature is above (farenheit):
+			<input type="text" name="tempHigh" /><br />
 			<input type="submit" value="Sumbit" name="submit"/>
 		</form>
 	</body>

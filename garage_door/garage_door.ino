@@ -1,4 +1,3 @@
-#define WEBDUINO_FAVICON_DATA ""  //to allow a custom favicon
 #define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
 #define PREFIX "" //tells the web server to start at the root
 
@@ -17,7 +16,7 @@
 static uint8_t mac[] = { 
   0x90, 0xA2, 0xDA, 0x0D, 0x08, 0x0C }; //the mac address of the arduino
 static uint8_t ip[] = { 
-  192, 168, 1, 20 }; //the ip address of the arduino
+  192, 168, 16, 18 }; //the ip address of the arduino
 WebServer webserver(PREFIX, 80);
 const byte ULTRASOUNDSIGNAL = 7; // Ultrasound signal pin
 int val = 0;
@@ -29,11 +28,10 @@ const int LASERTHRESHOLD = 1000;  //the threshold to determine if the laser is b
 boolean isOpen = false;
 boolean wasOpen = false;
 const byte HOMEPIN = 9;  //the pin which controls the LED in the house
-const byte DOORPIN = 5;  //the pin which will swap the transistor to open/close the door
-unsigned long timeOpen = 0;  //the time that the door was opened according to the millis command
-const byte LASERPIN = A10;  //the pin we will read the laser on
+const byte DOORPIN = 5;  //the pin which will power the transistor to open/close the door
+unsigned long openTime = 0;  //the time that the door was opened according to the millis command
 unsigned long autoCloseTime = 7200000; //2 hours in miliseconds  
-int lowCloseTemp = -10;
+int lowCloseTemp = 0;
 int highCloseTemp = 100;
 boolean AutoCloseEnabled = true;
 int tempSensorPin = A0;
@@ -88,12 +86,14 @@ void readDoorSensor(){
   }
   else{  //we are open
     if(wasOpen == false){
-      timeOpen = millis();
+      openTime = millis();
       wasOpen = true;
     }
     else{
       if(AutoCloseEnabled){
-        if(timeOpen+autoCloseTime < millis()){
+        if(openTime+autoCloseTime < millis()){
+          changeDoorState();
+        }else if((getTemp() > highCloseTemp) || (getTemp() < lowCloseTemp)){
           changeDoorState();
         }
       }
@@ -125,20 +125,6 @@ float getTemp(){
 }
 
 /**
- * checks if the safety laser is blocked and returns true if it is, it currently is stubbed out.
- * this needs to be tested as i'm not sure if it's normally open or normally closed
- */
-boolean laserIsBlocked(){
-  int level = analogRead(LASERPIN);
-  if(level >= LASERTHRESHOLD){
-    return true;
-  }
-  else{
-    return false;
-  }
-}
-
-/**
  *  this will be called whenever someone goes to our main site, 
  *  and will display the current info about the garrage.  It will 
  *  also allow you to close or open the garage door remotely
@@ -151,10 +137,8 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   P(endBody) = "</body> \n</html>";
   P(DoorStatus) = "<h1>Door Status: ";
   P(buttonClose) = "<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n";
-  P(buttonCloseDisabled) = "<input type=\"submit\" disabled=\"disabled\" value=\"Close Door\" name=\"button\" /> \n";
   P(buttonOpen) = "<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n";
-  P(buttonOpenDisabled) = "<input type=\"submit\" disabled=\"disabled\" value=\"Open Door\" name=\"button\" /> \n";
-  P(form) = "<form action=\"control.html\" method=\"post\"> \n";
+  P(form) = "<form action=\"control.htm\" method=\"post\"> \n";
   P(redirrect) = "<meta http-equiv=\"refresh\" content=\"300; /index.html\">";
   server.printP(header);
   server.printP(title);
@@ -172,16 +156,10 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   server.print("˚</h1><br /> \n");
   server.printP(form);
   if(isOpen){
-    if(!laserIsBlocked())
-      server.printP(buttonClose);
-    else
-      server.printP(buttonCloseDisabled);
+    server.printP(buttonClose);
   }
   else{
-    if(!laserIsBlocked())
-      server.printP(buttonOpen);
-    else
-      server.printP(buttonOpenDisabled);
+    server.printP(buttonOpen);
   }
   server.print("</form>\n");
   server.printP(endBody);
@@ -193,19 +171,14 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
  *  however in ours it won't for simplicity reasons and because it will be local only
  */
 void controlCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  if(!laserIsBlocked()){
-    changeDoorState();
-    File control = SD.open("control.htm");
-    if(control){
-      server.httpSuccess();
-      while(control.available()){
-        server.print((char)control.read());
-      }
-      control.close();
+  changeDoorState();
+  File control = SD.open("control.htm");
+  if(control){
+    server.httpSuccess();
+    while(control.available()){
+      server.print((char)control.read());
     }
-    else{
-      server.httpFail();
-    }
+    control.close();
   }
 }
 
@@ -231,6 +204,7 @@ void configCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
 
 /**
  * this will take care of any changes to the configuration file, updating the memory, and writing them to a file
+ * The variables will be gotten using an http Get request from the form on the config.html page
  */
 void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete){
   URLPARAM_RESULT rc;
@@ -287,7 +261,7 @@ void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char
 /**
  * the fail command in case of a 404 or other erros
  */
-void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+void viewConfigCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
   File failPage = SD.open("404.htm");
   if(failPage){
     while(failPage.available()){
@@ -297,13 +271,16 @@ void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool
   }
 }
 
-void faviconCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  File favicon = SD.open("favicon.ico");
-  if(favicon){
-    while(favicon.available()){
-      server.write(favicon.read());
+/**
+ * displays the config.txt which contains all the configuration data
+ */
+void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
+  File config = SD.open("config.txt");
+  if(config){
+    while(config.available()){
+      server.write((char)config.read());
     }
-    favicon.close();
+    config.close();
   }
 }
 
@@ -319,7 +296,7 @@ void readConfig(){
   String value;
   byte line = 1;
   boolean passedEquals = false;
-  if(config){
+  if(config){  //the file exists, read it
     byte nextChar = config.read();
     while(nextChar != -1){
       if(passedEquals){
@@ -359,20 +336,24 @@ void readConfig(){
       }
       nextChar = config.read();
     }
-    config.close();
+  }else{  //write the default values if the file does not exist already on the sd card
+      config.println("autoCloseEnabled=false");
+      config.println("autoCloseTime=7200000");
+      config.println("autoCloseHigh=100");
+      config.println("autoCloseLow=0");
   }
+  config.close();
 }
 
 /**
  *  The initial setup of the program, it is only called once to initialize everything
+ *  Initialize the pins, setup the ethernet and sd card, as well as add all the commands for the webserver
  */
 void setup() {
   pinMode(HOMEPIN, OUTPUT);  //the pin with the LED for notification
   pinMode(DOORPIN, OUTPUT);  
-  pinMode(LASERPIN, INPUT);  //the pin to read the laser safety sensor
-  pinMode(tempSensorPin, INPUT);
-  attachInterrupt(0, changeDoorState, RISING);  //located on digital pin 2
   digitalWrite(DOORPIN, LOW);
+  pinMode(tempSensorPin, INPUT);
   Ethernet.begin(mac, ip);
   SD.begin(4);
   readConfig();
@@ -381,7 +362,7 @@ void setup() {
   webserver.addCommand("control.htm", &controlCommand);  //this raises or lowers the garage door
   webserver.addCommand("config.htm", &configCommand);  //this is the one that will display the form to change the config
   webserver.addCommand("changeConfig.htm", &changeConfigCommand);  //this is used to actually change the settings
-  webserver.addCommand("favicon.ico", &faviconCommand);
+  webserver.addCommand("config.txt", &viewConfigCommand);  //view the config text file
   webserver.setFailureCommand(&failCommand);  //if it's none of the above http requests
   webserver.begin();  //start up the webserver, time for some fun
 }

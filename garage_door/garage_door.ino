@@ -1,4 +1,3 @@
-#define DS1307_I2C_ADDRESS 0x68  // This is the I2C address
 #define PREFIX "" //tells the web server to start at the root
 
 //these imports allow us to use the ethernet shield

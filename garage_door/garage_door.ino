@@ -23,8 +23,6 @@ int val = 0;
 int temp = 0;
 int timecount = 0; // Echo counter
 const int THRESHOLD = 250;  //the threshold to determine if the door is open or closed
-const int LASERTHRESHOLD = 1000;  //the threshold to determine if the laser is blocked because it doesn't
-//use on and off, it uses 5.8v when clear, 6.4v when it's blocked.
 boolean isOpen = false;
 boolean wasOpen = false;
 const byte HOMEPIN = 9;  //the pin which controls the LED in the house

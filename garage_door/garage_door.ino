@@ -80,13 +80,11 @@ void readDoorSensor(){
     }
     isOpen = false;
     digitalWrite(HOMEPIN, LOW); //turn light off the LED if it's open
-  }
-  else{  //we are open
+  }else{  //we are open
     if(wasOpen == false){
       openTime = millis();
       wasOpen = true;
-    }
-    else{
+    }else{
       if(AutoCloseEnabled){
         if(openTime+autoCloseTime < millis()){
           changeDoorState();

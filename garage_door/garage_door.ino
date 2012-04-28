@@ -28,6 +28,7 @@ const byte HOMEPIN = 9;  //the pin which controls the LED in the house
 const byte DOORPIN = 5;  //the pin which will power the transistor to open/close the door
 unsigned long openTime = 0;  //the time that the door was opened according to the millis command
 unsigned long autoCloseTime = 7200000; //2 hours in miliseconds  
+unsigned long closeTime = 0;
 int lowCloseTemp = 0;
 int highCloseTemp = 100;
 boolean AutoCloseEnabled = true;
@@ -70,27 +71,30 @@ void readDoorSensor(){
     val = digitalRead(ULTRASOUNDSIGNAL);
     timecount = timecount +1;            // Count echo pulse time
   }
-
-  /* Writing out values to the serial port
-   * -------------------------------------------------------------------
-   */
+  /**
+  *  Determine if we are open and perform the appropriate action`
+  */
   if(timecount > THRESHOLD){  //we are closed
     if(wasOpen){
       wasOpen = false;
     }
     isOpen = false;
     digitalWrite(HOMEPIN, LOW); //turn light off the LED if it's open
-  }else{  //we are open
+  }
+  else{  //we are open
     if(wasOpen == false){
       openTime = millis();
+      closeTime = openTime+autoCloseTime;
       wasOpen = true;
-    }else{
-      if(AutoCloseEnabled){
-        if(openTime+autoCloseTime < millis()){
-          changeDoorState();
-        }else if((getTemp() > highCloseTemp) || (getTemp() < lowCloseTemp)){
-          changeDoorState();
-        }
+    }
+    if(AutoCloseEnabled == true){
+      if(closeTime < millis()){
+        changeDoorState();
+        wasOpen = false;  //to prevent it from activating over and over again causing a jam
+      }
+      else if((getTemp() > highCloseTemp) || (getTemp() < lowCloseTemp)){
+        changeDoorState();
+        wasOpen = false;  //to prevent it from activating over and over again causing a jam
       }
     }
     isOpen = true;
@@ -134,7 +138,7 @@ void statusCommand(WebServer &server, WebServer::ConnectionType type, char *, bo
   P(buttonClose) = "<input type=\"submit\" value=\"Close Door\" name=\"button\" /> \n";
   P(buttonOpen) = "<input type=\"submit\" value=\"Open Door\" name=\"button\" /> \n";
   P(form) = "<form action=\"control.htm\" method=\"post\"> \n";
-  P(redirrect) = "<meta http-equiv=\"refresh\" content=\"300; /index.html\">";
+  P(redirrect) = "<meta http-equiv=\"refresh\" content=\"300; /index.htm\">";
   server.printP(header);
   server.printP(title);
   server.printP(redirrect);
@@ -209,47 +213,65 @@ void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char
   int value_len;
   boolean foundEnable = false;
   if(type == WebServer::GET){
-      server.httpSuccess();
-      if(strlen(url_tail)){
-        while(strlen(url_tail)){
-          rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
-          if (rc == URLPARAM_EOS){
-            break;
-          }else{
-            if(name == "enableAutoClose"){
-              AutoCloseEnabled = true;
-              foundEnable = true;
-            }else if(name == "delay"){
-              if(value == "0"){
-                AutoCloseEnabled = false;
-              }else if(value == "1"){
-                autoCloseTime = 900000;
-              }else if(value == "2"){
-                autoCloseTime = 1800000;
-              }else if(value == "3"){
-                  autoCloseTime = 2700000;
-              }else if(value == "4"){
-                  autoCloseTime = 3600000;
-              }else if(value == "5"){
-                  autoCloseTime = 7200000;
-              }
-            }else if(name == "tempLow"){
-              lowCloseTemp = (int)value;
-            }else if(name == "tempHigh"){
-              highCloseTemp = (int)value;
+    server.httpSuccess();
+    if(strlen(url_tail)){
+      while(strlen(url_tail)){
+        rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
+        if (rc == URLPARAM_EOS){
+          break;
+        }
+        else{
+          if(name == "enableAutoClose"){
+            AutoCloseEnabled = true;
+            foundEnable = true;
+          }
+          else if(name == "delay"){
+            if(value == "0"){
+              AutoCloseEnabled = false;
+            }
+            else if(value == "1"){
+              autoCloseTime = 900000;
+            }
+            else if(value == "2"){
+              autoCloseTime = 1800000;
+            }
+            else if(value == "3"){
+              autoCloseTime = 2700000;
+            }
+            else if(value == "4"){
+              autoCloseTime = 3600000;
+            }
+            else if(value == "5"){
+              autoCloseTime = 7200000;
             }
           }
+          else if(name == "tempLow"){
+            lowCloseTemp = (int)value;
+          }
+          else if(name == "tempHigh"){
+            highCloseTemp = (int)value;
+          }
         }
-      }if(!foundEnable){
-        AutoCloseEnabled = false;
       }
-      SD.remove("config.txt");
-      File configFile = SD.open("config.txt", FILE_WRITE);
-      configFile.println("autoCloseEnabled=" + AutoCloseEnabled);
-      configFile.println("autoCloseTime=" + autoCloseTime);
-      configFile.println("autoCloseHigh=" + highCloseTemp);
-      configFile.println("autoCloseLow=" + lowCloseTemp);
-      configFile.close();
+    }
+    if(!foundEnable){
+      AutoCloseEnabled = false;
+    }
+    SD.remove("config.txt");
+    File configFile = SD.open("config.txt", FILE_WRITE);
+    if(AutoCloseEnabled)
+      configFile.println("autoCloseEnabled=true");
+    else
+      configFile.println("autoCloseEnabled=false");
+    configFile.print("autoCloseTime=");
+    configFile.println(autoCloseTime);
+    configFile.print("autoCloseHigh=");
+    configFile.println(highCloseTemp);
+    configFile.print("autoCloseLow=");
+    configFile.println(lowCloseTemp);
+    configFile.close();
+    server.println("Config Successfully Updated<br />");
+    server.println("<a href=\"./index.htm\">Return Home</a>");
   }
 }
 
@@ -257,7 +279,7 @@ void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char
  * the fail command in case of a 404 or other erros
  */
 void viewConfigCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  File failPage = SD.open("404.htm");
+  File failPage = SD.open("config.txt");
   if(failPage){
     while(failPage.available()){
       server.write((char)failPage.read());
@@ -270,7 +292,7 @@ void viewConfigCommand(WebServer &server, WebServer::ConnectionType type, char *
  * displays the config.txt which contains all the configuration data
  */
 void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool){
-  File config = SD.open("config.txt");
+  File config = SD.open("404.htm");
   if(config){
     while(config.available()){
       server.write((char)config.read());
@@ -280,12 +302,12 @@ void failCommand(WebServer &server, WebServer::ConnectionType type, char *, bool
 }
 
 /**
-* this reads the contents of the config file and sets the variables accordingly
-* Line 1: autoclose enabled
-* Line 2: autoclose delay
-* Line 3: autoclose on low temp
-* Line 4: autoclose on high temp
-*/
+ * this reads the contents of the config file and sets the variables accordingly
+ * Line 1: autoclose enabled
+ * Line 2: autoclose delay
+ * Line 3: autoclose on low temp
+ * Line 4: autoclose on high temp
+ */
 void readConfig(){
   File config = SD.open("config.txt");
   String value;
@@ -297,25 +319,30 @@ void readConfig(){
       if(passedEquals){
         if(nextChar != 10){
           value = value + (char)nextChar;
-        }else{
+        }
+        else{
           if(line == 1){
             if(value.charAt(0) == 't'){
               AutoCloseEnabled = true;
-            }else{
+            }
+            else{
               AutoCloseEnabled = false;
             }
             line++;
-          }else if(line == 2){
+          }
+          else if(line == 2){
             char buf[value.length()];
             value.toCharArray(buf, value.length());
             autoCloseTime = (long)buf;
             line++;
-          }else if(line == 3){
+          }
+          else if(line == 3){
             char buf[value.length()];
             value.toCharArray(buf, value.length());
             highCloseTemp = (int)buf;
             line++;
-          }else if(line == 4){
+          }
+          else if(line == 4){
             char buf[value.length()];
             value.toCharArray(buf, value.length());
             highCloseTemp = (int)buf;
@@ -331,11 +358,12 @@ void readConfig(){
       }
       nextChar = config.read();
     }
-  }else{  //write the default values if the file does not exist already on the sd card
-      config.println("autoCloseEnabled=false");
-      config.println("autoCloseTime=7200000");
-      config.println("autoCloseHigh=100");
-      config.println("autoCloseLow=0");
+  }
+  else{  //write the default values if the file does not exist already on the sd card
+    config.println("autoCloseEnabled=true");
+    config.println("autoCloseTime=7200000");
+    config.println("autoCloseHigh=100");
+    config.println("autoCloseLow=0");
   }
   config.close();
 }
@@ -372,3 +400,4 @@ void loop() {
   webserver.processConnection(buff, &len);  //check to see if someone wants to connect to the site
   delay(100);  //delay and go again
 }
+

@@ -379,7 +379,7 @@ void setup() {
   pinMode(tempSensorPin, INPUT);
   Ethernet.begin(mac, ip);
   SD.begin(4);
-  readConfig();
+  //readConfig();
   webserver.setDefaultCommand(&statusCommand);
   webserver.addCommand("index.htm", &statusCommand);  //the home page which gives you the status, same as above
   webserver.addCommand("control.htm", &controlCommand);  //this raises or lowers the garage door

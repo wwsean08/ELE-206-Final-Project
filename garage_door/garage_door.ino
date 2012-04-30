@@ -271,7 +271,7 @@ void changeConfigCommand(WebServer &server, WebServer::ConnectionType type, char
     configFile.println(lowCloseTemp);
     configFile.close();
     server.println("Config Successfully Updated<br />");
-    server.println("<a href=\"./index.htm\">Return Home</a>");
+    server.println("<a href=\"./index.htm\">Home</a> | <a href=\"./config.txt\">View Conf");
   }
 }
 
@@ -333,19 +333,19 @@ void readConfig(){
           else if(line == 2){
             char buf[value.length()];
             value.toCharArray(buf, value.length());
-            autoCloseTime = (long)buf;
+            autoCloseTime = long(buf);
             line++;
           }
           else if(line == 3){
             char buf[value.length()];
             value.toCharArray(buf, value.length());
-            highCloseTemp = (int)buf;
+            highCloseTemp = int(buf);
             line++;
           }
           else if(line == 4){
             char buf[value.length()];
             value.toCharArray(buf, value.length());
-            highCloseTemp = (int)buf;
+            highCloseTemp = int(buf);
             config.close();
             return;
           }
@@ -400,4 +400,3 @@ void loop() {
   webserver.processConnection(buff, &len);  //check to see if someone wants to connect to the site
   delay(100);  //delay and go again
 }
-
